@@ -9,13 +9,15 @@ public struct ContentView: View {
 
     public var body: some View {
         HStack(spacing: 0) {
-            // Left tool panel.
+            // Left tool panel. zIndex(1) keeps it above the preview's (clipped) overflow for both
+            // rendering and hit-testing, so its buttons stay clickable when the preview is zoomed.
             ScrollView {
                 SettingsPanel(document: document)
                     .padding()
             }
             .frame(width: 320)
             .background(.regularMaterial)
+            .zIndex(1)
 
             Divider()
 
