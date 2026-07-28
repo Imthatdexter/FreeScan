@@ -1,0 +1,43 @@
+name: FreeScan
+options:
+  bundleIdPrefix: app.freescan
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+# The shared scanner + processing + UI logic is a SwiftPM package (Package.swift) so it builds
+# and tests with `swift build` / `swift test` (Command Line Tools only). The app target below
+# depends on that local package's FreeScanUI product.
+packages:
+  FreeScan:
+    path: .
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ""          # set your Apple Developer team for notarized builds
+    ALWAYS_SEARCH_USER_PATHS: NO
+
+targets:
+  FreeScan:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/FreeScanApp
+    dependencies:
+      - package: FreeScan
+        product: FreeScanUI
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.freescan.FreeScan
+        PRODUCT_NAME: FreeScan
+        CODE_SIGN_ENTITLEMENTS: Sources/FreeScanApp/FreeScan.entitlements
+        CODE_SIGN_IDENTITY: "-"            # ad-hoc for local builds
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_HARDENED_RUNTIME: YES
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.photography
+        INFOPLIST_KEY_NSHumanReadableCopyright: "MIT — FreeScan contributors"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
