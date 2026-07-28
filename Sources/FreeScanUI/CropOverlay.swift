@@ -59,8 +59,8 @@ struct CropOverlay: View {
         // Border + rule-of-thirds guides (non-interactive).
         ZStack {
             Rectangle()
-                .stroke(isActive ? Color.accentColor : Color.white.opacity(0.65),
-                        lineWidth: isActive ? 2 : 1)
+                .stroke(isActive ? Color.accentColor : Color.red,
+                        lineWidth: isActive ? 2 : 2)
             if isActive { thirdsPath(vr.size).stroke(Color.white.opacity(0.25), lineWidth: 0.5) }
         }
         .frame(width: vr.width, height: vr.height)

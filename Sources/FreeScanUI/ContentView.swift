@@ -21,6 +21,7 @@ public struct ContentView: View {
 
             // Right preview pane.
             PrescanView(document: document)
+                .clipped()   // keep a zoomed/panned preview from overflowing onto the controls
         }
         .frame(minWidth: 1000, minHeight: 680)
         .navigationSubtitle(statusSubtitle)

@@ -93,8 +93,8 @@ public final class ScanDocument {
 
     // MARK: View transform (zoom / pan / rotate)
 
-    public func rotateCCW() { rotationSteps = (rotationSteps + 1) % 4 }
-    public func rotateCW() { rotationSteps = (rotationSteps + 3) % 4 }
+    public func rotateCW() { rotationSteps = (rotationSteps + 1) % 4 }
+    public func rotateCCW() { rotationSteps = (rotationSteps + 3) % 4 }
     public func resetView() { zoom = 1.0; panOffset = .zero; rotationSteps = 0 }
     public func fitToWindow() { zoom = 1.0; panOffset = .zero }
 
