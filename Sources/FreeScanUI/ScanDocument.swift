@@ -16,6 +16,11 @@ public final class ScanDocument {
     public var selections: [CropRect] = []
     public var activeSelectionID: UUID?
     public var curve: ToneCurve = .defaultContrast
+    /// Preview view transform: zoom (1.0 = fit), pan offset, and rotation in quarter-turns CCW
+    /// (0/1/2/3). Rotation also rotates the exported scan so saved files match the view.
+    public var zoom: CGFloat = 1.0
+    public var panOffset: CGSize = .zero
+    public var rotationSteps: Int = 0
     /// Auto-derived levels (Dmin/Dmax) for the PREVIEW, computed from the prescan. The final
     /// scan recomputes its own levels from its own histogram (the two captures are exposed
     /// differently), so this is only for the live preview.
@@ -85,6 +90,13 @@ public final class ScanDocument {
     public func selectFilmUnit() { scanner.selectUnit(for: settings.filmType) }
 
     public func prescan() { scanner.requestOverview() }
+
+    // MARK: View transform (zoom / pan / rotate)
+
+    public func rotateCCW() { rotationSteps = (rotationSteps + 1) % 4 }
+    public func rotateCW() { rotationSteps = (rotationSteps + 3) % 4 }
+    public func resetView() { zoom = 1.0; panOffset = .zero; rotationSteps = 0 }
+    public func fitToWindow() { zoom = 1.0; panOffset = .zero }
 
     /// Call when the film type changes: re-select the unit, re-derive preview levels, refresh.
     public func filmTypeChanged() {
@@ -164,6 +176,7 @@ public final class ScanDocument {
         let dpi = UInt(max(settings.resolution, 72))
         let curve = self.curve
         let saveRaw = settings.saveRawScan
+        let rotationSteps = self.rotationSteps
         let rawURL = outputURL
             .deletingLastPathComponent()
             .appendingPathComponent(outputURL.deletingPathExtension().lastPathComponent + "-RAW")
@@ -181,10 +194,11 @@ public final class ScanDocument {
                 try? ImageExporter.write(scanned, to: rawURL, format: .tiff, dpi: dpi)
             }
             // The Epson ICA driver delivers the full-scan file already inverted to a positive, so
-            // invert=false: just desaturate (B&W) + apply the curve.
+            // invert=false: desaturate (B&W) + curve, then rotate to match the view orientation.
             guard let processed = FilmProcessing.processAndRender(
                 scanned, filmType: filmType, levels: nil, curve: curve,
-                bitsPerComponent: bits, invert: false
+                bitsPerComponent: bits, invert: false,
+                rotationQuarterTurnsCCW: rotationSteps
             ) else {
                 try? FileManager.default.removeItem(at: scanURL)
                 await self?.processingFailed("Image processing failed (try a lower DPI or 8-bit).")

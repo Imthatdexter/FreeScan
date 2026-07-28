@@ -3,23 +3,26 @@ import CoreGraphics
 import FreeScanCore
 
 /// Draggable frame-selection overlay. Selections are stored in **inches** (scanner space); this
-/// view converts to/from the displayed view-space frame. The box, the move hit-area, and the
-/// corner handles are all drawn as direct children of one `ZStack` in the same absolute overlay
-/// coordinate space (origin top-left), so they line up exactly.
+/// view converts to/from the displayed frame. Gestures report in the untransformed "preview"
+/// coordinate space, so under zoom/rotation each drag delta is divided by `zoom` and un-rotated
+/// before being scaled to inches — keeping the crop physically correct regardless of the view
+/// transform.
 ///
-/// Dragging uses the gesture's cumulative translation anchored to the rect captured at drag start
-/// (so it can't "run away"), and positions are clamped to the physical scan area so a frame can
-/// never be dragged off the image.
+/// The box, the move hit-area, and the corner handles are all drawn in one shared overlay space
+/// (origin top-left), so they line up exactly. Dragging is anchored to the rect captured at drag
+/// start (so it can't run away), and positions are clamped to the physical scan area.
 struct CropOverlay: View {
     let document: ScanDocument
     let displayedSize: CGSize
+    let zoom: CGFloat
+    let rotationSteps: Int
 
     /// Active drag state: the crop id and its inch-rect at the moment the drag began.
     @State private var dragStart: (id: UUID, inch: CGRect)?
 
     private var physical: CGSize { document.scanner.overviewPhysicalSize }
 
-    /// Inches per view point (x/y), assuming the overlay exactly covers the aspect-fit image.
+    /// Inches per aspect-fit view point (x/y), assuming the overlay exactly covers the aspect-fit image.
     private var inX: CGFloat { displayedSize.width > 0 ? physical.width / displayedSize.width : 0 }
     private var inY: CGFloat { displayedSize.height > 0 ? physical.height / displayedSize.height : 0 }
 
@@ -89,37 +92,56 @@ struct CropOverlay: View {
         return p
     }
 
-    // MARK: Gestures
+    // MARK: Gestures (report in the "preview" space; convert through zoom + rotation)
 
     private func moveGesture(for crop: CropRect) -> some Gesture {
-        DragGesture(minimumDistance: 0)
+        DragGesture(minimumDistance: 4, coordinateSpace: .named("preview"))
             .onChanged { value in
                 if dragStart?.id != crop.id { dragStart = (crop.id, inchRect(of: crop)) }
                 guard let start = dragStart else { return }
-                let dx = value.translation.width * inX
-                let dy = value.translation.height * inY
+                let d = toInchDelta(value.translation)
                 var r = start.inch
-                r.origin.x = clamp(start.inch.origin.x + dx, 0, max(physical.width - start.inch.width, 0))
-                r.origin.y = clamp(start.inch.origin.y + dy, 0, max(physical.height - start.inch.height, 0))
+                r.origin.x = clamp(start.inch.origin.x + d.width, 0, max(physical.width - start.inch.width, 0))
+                r.origin.y = clamp(start.inch.origin.y + d.height, 0, max(physical.height - start.inch.height, 0))
                 setInchRect(of: crop, to: r)
             }
             .onEnded { _ in dragStart = nil }
     }
 
     private func resizeGesture(for crop: CropRect, handle: Handle) -> some Gesture {
-        DragGesture(minimumDistance: 0)
+        DragGesture(minimumDistance: 0, coordinateSpace: .named("preview"))
             .onChanged { value in
                 if dragStart?.id != crop.id { dragStart = (crop.id, inchRect(of: crop)) }
                 guard let start = dragStart else { return }
-                // Moved corner location in inches.
                 let startView = viewRect(fromInch: start.inch)
                 let corner = handle.point(in: startView)
-                let mx = (corner.x + value.translation.width) * inX
-                let my = (corner.y + value.translation.height) * inY
+                let fitDelta = unrotate(CGSize(width: value.translation.width / max(zoom, 1e-6),
+                                               height: value.translation.height / max(zoom, 1e-6)))
+                let mx = (corner.x + fitDelta.width) * inX   // aspect-fit px → inches
+                let my = (corner.y + fitDelta.height) * inY
                 let r = rectBetween(handle: handle, movedX: mx, movedY: my, start: start.inch)
                 setInchRect(of: crop, to: r)
             }
             .onEnded { _ in dragStart = nil }
+    }
+
+    /// Convert a screen-space (preview) drag delta to a scanner-inch delta, undoing the zoom and
+    /// rotation applied to the view.
+    private func toInchDelta(_ screen: CGSize) -> CGSize {
+        guard zoom > 0 else { return .zero }
+        let perFit = CGSize(width: screen.width / zoom, height: screen.height / zoom) // aspect-fit points
+        let unrot = unrotate(perFit)
+        return CGSize(width: unrot.width * inX, height: unrot.height * inY)
+    }
+
+    /// Undo the view rotation (quarter-turns CCW) on an aspect-fit-space delta.
+    private func unrotate(_ s: CGSize) -> CGSize {
+        switch ((rotationSteps % 4) + 4) % 4 {
+        case 1:  return CGSize(width: s.height, height: -s.width)
+        case 2:  return CGSize(width: -s.width, height: -s.height)
+        case 3:  return CGSize(width: -s.height, height: s.width)
+        default: return s
+        }
     }
 
     /// Rebuild the rect from the moved corner and the (fixed) opposite corner, with normalization,
@@ -133,10 +155,8 @@ struct CropOverlay: View {
         case .bottomLeft:  minX = movedX; maxY = movedY
         case .bottomRight: maxX = movedX; maxY = movedY
         }
-        // Clamp to the physical area first.
         minX = clamp(minX, 0, physical.width); maxX = clamp(maxX, 0, physical.width)
         minY = clamp(minY, 0, physical.height); maxY = clamp(maxY, 0, physical.height)
-        // Normalize (if a corner crossed its opposite) and enforce a minimum size.
         var r = CGRect(x: min(minX, maxX), y: min(minY, maxY),
                        width: abs(maxX - minX), height: abs(maxY - minY))
         if r.width < minDim {
@@ -154,7 +174,7 @@ struct CropOverlay: View {
         min(max(v, lo), hi)
     }
 
-    // MARK: Conversions (inch ↔ view)
+    // MARK: Conversions (inch ↔ aspect-fit view)
 
     private func inchRect(of crop: CropRect) -> CGRect {
         document.selections.first { $0.id == crop.id }?.rect ?? .zero

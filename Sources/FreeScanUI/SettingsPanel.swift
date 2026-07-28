@@ -86,16 +86,33 @@ struct SettingsPanel: View {
 
             // MARK: Frames
             Section("Frames") {
-                HStack {
-                    Text("\(document.selections.count) frame(s) marked")
+                if document.selections.isEmpty {
+                    Text("No frames yet — prescan, then add a frame.")
                         .font(.caption).foregroundStyle(.secondary)
-                    Spacer()
-                    Button { document.addSelection() } label: {
-                        Label("Add frame", systemImage: "plus.rectangle.on.rectangle")
-                    }
-                    .disabled(document.scanner.overviewPixelSize == .zero)
                 }
-                Text("Drag a frame's corners to size it; click a frame to make it active. The active frame is what “Scan frame” captures.")
+                ForEach(Array(document.selections.enumerated()), id: \.element.id) { idx, sel in
+                    HStack {
+                        Image(systemName: sel.id == document.activeSelectionID ? "checkmark.circle.fill" : "circle")
+                            .foregroundStyle(sel.id == document.activeSelectionID ? Color.accentColor : Color.secondary)
+                        Text("Frame \(idx + 1)").font(.caption)
+                        Spacer()
+                        Button(role: .destructive) {
+                            document.removeSelection(sel.id)
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Delete this frame")
+                    }
+                    .padding(.vertical, 2)
+                    .contentShape(Rectangle())
+                    .onTapGesture { document.activeSelectionID = sel.id }
+                }
+                Button { document.addSelection() } label: {
+                    Label("Add frame", systemImage: "plus.rectangle.on.rectangle")
+                }
+                .disabled(document.scanner.overviewPixelSize == .zero)
+                Text("Click a frame (here or in the preview) to activate it. Drag inside a frame to move it; drag its corners to resize.")
                     .font(.caption2).foregroundStyle(.secondary)
             }
 

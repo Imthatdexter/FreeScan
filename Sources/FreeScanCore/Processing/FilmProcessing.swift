@@ -30,7 +30,8 @@ public enum FilmProcessing {
         filmType: FilmType,
         levels: ColorNegativeLevels?,
         curve: ToneCurve,
-        invert: Bool = true
+        invert: Bool = true,
+        rotationQuarterTurnsCCW: Int = 0
     ) -> CIImage {
         var img = input
         if invert && filmType.requiresInversion {
@@ -58,6 +59,16 @@ public enum FilmProcessing {
             "inputCubeDimension": 64,
             "inputColorSpace": sRGB,
         ])
+        // Rotate the export to match the view orientation (quarter-turns CCW). Re-origin so the
+        // extent starts at (0,0) for a clean render.
+        let turns = ((rotationQuarterTurnsCCW % 4) + 4) % 4
+        if turns != 0 {
+            img = img.transformed(by: CGAffineTransform(rotationAngle: CGFloat(turns) * .pi / 2))
+            let origin = img.extent.origin
+            if origin != .zero {
+                img = img.transformed(by: CGAffineTransform(translationX: -origin.x, y: -origin.y))
+            }
+        }
         return img
     }
 
@@ -86,10 +97,12 @@ public enum FilmProcessing {
         levels: ColorNegativeLevels?,
         curve: ToneCurve,
         bitsPerComponent: Int,
-        invert: Bool = true
+        invert: Bool = true,
+        rotationQuarterTurnsCCW: Int = 0
     ) -> CGImage? {
         let ci = CIImage(cgImage: input, options: [.colorSpace: sRGB])
-        let processed = pipeline(ci, filmType: filmType, levels: levels, curve: curve, invert: invert)
+        let processed = pipeline(ci, filmType: filmType, levels: levels, curve: curve,
+                                 invert: invert, rotationQuarterTurnsCCW: rotationQuarterTurnsCCW)
         return render(processed, bitsPerComponent: bitsPerComponent)
     }
 }
